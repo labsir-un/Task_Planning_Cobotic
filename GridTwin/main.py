@@ -133,6 +133,8 @@ class RosBridge:
         name = _instance_name_at(target, self.game.instance_positions, self.game.board)
         number = _extract_number_from_name(name) if name else None
         payload = {
+            "x": target[0],
+            "y": target[1],
             "color": color,
             "id": number,
             "dir": _direction_label(direction),

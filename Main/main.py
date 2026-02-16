@@ -16,6 +16,7 @@ from Main.ros_constants import (
     TOPIC_CIF_MOVE,
     TOPIC_CIF_MOVE_EVENT,
     TOPIC_CIF_START,
+    TOPIC_ABB_COMMAND,
     TOPIC_NLP_COMMAND,
     TOPIC_NLP_MESSAGE,
 )
@@ -52,6 +53,7 @@ class Orchestrator(Node):
         self.cif_start_pub = self.create_publisher(String, TOPIC_CIF_START, 10)
         self.cif_move_pub = self.create_publisher(String, TOPIC_CIF_MOVE, 10)
         self.nlp_message_pub = self.create_publisher(String, TOPIC_NLP_MESSAGE, 10)
+        self.abb_command_pub = self.create_publisher(String, TOPIC_ABB_COMMAND, 10)
 
     def _on_cif_move_event(self, msg: String) -> None:
         try:
@@ -65,8 +67,21 @@ class Orchestrator(Node):
         if actor == "agent" and color == "red" and block_id is not None and direction:
             speak = f"Robot will move red block number {block_id} {direction}, please wait..."
             self._publish_nlp_message(speak)
+        # Forward only agent moves to ABB
+        if actor == "agent" and block_id is not None and direction and color:
+            abb_msg = String()
+            abb_msg.data = json.dumps({
+                "x": data.get("x"),
+                "y": data.get("y"),
+                "color": color,
+                "id": block_id,
+                "dir": direction,
+                "actor": actor,
+            })
+            self.abb_command_pub.publish(abb_msg)
+            self.get_logger().info(f"Forwarded agent move_event to abb/command: {abb_msg.data}")
         else:
-            self.get_logger().info(f"Move event: {data}")
+            self.get_logger().info(f"Move event skipped (not agent or incomplete): {data}")
 
     def _publish_nlp_message(self, text: str) -> None:
         msg = String()
