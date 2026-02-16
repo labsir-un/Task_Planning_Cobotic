@@ -1,0 +1,71 @@
+import "goals.cif";
+
+plant def red(alg int x_init, y_init):
+    controllable up, down, left, right;
+
+    disc int x = x_init;
+    disc int y = y_init;
+
+    requirement invariant 0<=x, x<10;
+    requirement invariant 0<=y, y<10;
+
+    disc bool in_goal = false;
+    marked in_goal = true;
+
+    location:
+        initial;
+        marked;
+        edge up do y := y + 1, in_goal := inGoal(x,y);
+        edge down do y := y - 1, in_goal := inGoal(x,y);
+        edge left do x := x - 1, in_goal := inGoal(x,y);
+        edge right do x := x + 1, in_goal := inGoal(x,y);
+end
+
+plant def green(alg int x_init, y_init):
+    controllable up, down, left, right;
+    uncontrollable up_user, down_user, left_user, right_user;
+
+    disc int x = x_init;
+    disc int y = y_init;
+
+    requirement invariant 0<=x, x<10;
+    requirement invariant 0<=y, y<10;
+
+    location:
+        initial;
+        marked;
+        edge up, up_user do y := y + 1;
+        edge down, down_user do y := y - 1;
+        edge left, left_user do x := x - 1;
+        edge right, right_user do x := x + 1;
+end
+
+plant def blue(alg int[0..9] x_init, y_init):
+    uncontrollable up_user, down_user, left_user, right_user;
+
+    disc int x = x_init;
+    disc int y = y_init;
+
+    requirement invariant 0<=x, x<10;
+    requirement invariant 0<=y, y<10;
+
+    location:
+        initial;
+        marked;
+        edge up_user do y := y + 1;
+        edge down_user do y := y - 1;
+        edge left_user do x := x - 1;
+        edge right_user do x := x + 1;
+end
+
+plant def black(alg int[0..9] x_init, y_init):
+    disc int x = x_init;
+    disc int y = y_init;
+
+    requirement invariant 0<=x, x<10;
+    requirement invariant 0<=y, y<10;
+
+    location:
+        initial;
+        marked;
+end
