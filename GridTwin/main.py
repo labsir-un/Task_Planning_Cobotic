@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 import time
-import json
 import threading
 from dataclasses import dataclass
 from typing import Optional
@@ -39,12 +38,10 @@ GRID_ROOT = Path(__file__).resolve().parent
 PARENT = GRID_ROOT.parent
 if str(PARENT) not in sys.path:
     sys.path.append(str(PARENT))
-from Main.ros_constants import (
-    CIF_MOVE_COLORS,
-    CIF_MOVE_DIRECTIONS,
-    TOPIC_CIF_MOVE,
-    TOPIC_CIF_MOVE_EVENT,
-    TOPIC_CIF_START,
+from Orchestrator.ros_constants import (
+    TOPIC_GRIDTWIN_IN,
+    TOPIC_GRIDTWIN_OUT,
+    TOPIC_GRIDTWIN_START,
 )
 
 
@@ -92,14 +89,14 @@ def _direction_label(direction: Direction) -> str:
 
 
 class RosBridge:
-    """ROS helper to publish state/events and accept setup/move commands while UI runs."""
+    """ROS helper to publish state and accept planner commands while UI runs."""
 
     def __init__(self, game: "Game") -> None:
         self.game = game
         self.node: Optional[Node] = None
         self.executor: Optional[SingleThreadedExecutor] = None
         self.thread: Optional[threading.Thread] = None
-        self.move_event_pub = None
+        self.out_pub = None
         self.started = False
 
     @classmethod
@@ -111,9 +108,10 @@ class RosBridge:
         try:
             rclpy.init(args=None)
             bridge.node = Node("cif_bridge_ui")
-            bridge.move_event_pub = bridge.node.create_publisher(String, TOPIC_CIF_MOVE_EVENT, 10)
-            bridge.node.create_subscription(String, TOPIC_CIF_MOVE, bridge._on_move_request, 10)
-            bridge.node.create_subscription(String, TOPIC_CIF_START, bridge._on_start, 10)
+            bridge.out_pub = bridge.node.create_publisher(String, TOPIC_GRIDTWIN_OUT, 10)
+            bridge.node.create_subscription(String, TOPIC_GRIDTWIN_IN, bridge._on_in, 10)
+            bridge.node.create_subscription(String, TOPIC_GRIDTWIN_START, bridge._on_start, 10)
+            bridge.node.get_logger().info("GridTwin module started.")
             bridge.executor = SingleThreadedExecutor()
             bridge.executor.add_node(bridge.node)
             bridge.thread = threading.Thread(target=bridge.executor.spin, daemon=True)
@@ -125,81 +123,72 @@ class RosBridge:
             return None
 
     def publish_move(self, start_pos: Position, direction: Direction, actor: ActorType) -> None:
-        if self.move_event_pub is None or String is None:
+        if self.out_pub is None or String is None:
             return
         target = (start_pos[0] + direction.dx, start_pos[1] + direction.dy)
         block = self.game.board.get_block(target)
         color = block.color.value if block else "unknown"
         name = _instance_name_at(target, self.game.instance_positions, self.game.board)
         number = _extract_number_from_name(name) if name else None
-        payload = {
-            "x": target[0],
-            "y": target[1],
-            "color": color,
-            "id": number,
-            "dir": _direction_label(direction),
-            "actor": actor.name.lower(),
-        }
-        msg = String()
-        msg.data = json.dumps(payload)
-        self.move_event_pub.publish(msg)
-
-    def _on_setup(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError:
-            self._publish_event({"type": "setup_result", "success": False, "reason": "invalid_json"})
+        if number is None:
+            self._publish_out("error instance_number_not_found")
             return
-        blocks = payload.get("blocks", [])
-        goals = payload.get("goals", [])
-        self.game.board.blocks.clear()
-        self.game.board.goals.clear()
-        for item in blocks:
-            color = _blockcolor_from_str(str(item.get("color", "")))
-            x = item.get("x")
-            y = item.get("y")
-            if color is None or x is None or y is None:
+        self._publish_out(
+            f"move_ok {actor.name.lower()} {color} {number} {_direction_label(direction)} {target[0]} {target[1]}"
+        )
+
+    def _publish_state(self) -> None:
+        if self.node is not None:
+            self.node.get_logger().info("PROCESS publishing state snapshot.")
+        block_tokens: list[str] = []
+        for pos, block in self.game.board.iter_blocks():
+            name = _instance_name_at(pos, self.game.instance_positions, self.game.board)
+            number = _extract_number_from_name(name) if name else None
+            if number is None:
                 continue
-            self.game.board.place_block((int(x), int(y)), color)
-        for g in goals:
-            gx = g.get("x")
-            gy = g.get("y")
-            if gx is None or gy is None:
-                continue
-            self.game.board.goals.add((int(gx), int(gy)))
+            block_tokens.append(f"{block.color.value}:{number}:{pos[0]}:{pos[1]}")
+        goals_tokens = [f"{gx}:{gy}" for gx, gy in sorted(self.game.board.goals)]
+        blocks_txt = ";".join(sorted(block_tokens)) if block_tokens else "-"
+        goals_txt = ";".join(goals_tokens) if goals_tokens else "-"
+        self._publish_out(f"state {self.game.state} blocks {blocks_txt} goals {goals_txt}")
 
-        instances = build_cif(self.game.board)
-        self.game.instance_positions = {name: pos for name, _, pos in instances}
-        if self.game.supervisor is not None:
-            self.game.supervisor.shutdown()
-        try:
-            self.game.supervisor = SupervisorBridge.start(self.game.board, instances=instances)
-        except Exception as exc:
-            print(f"Failed to start supervisor from ROS setup: {exc}")
-            self.game.supervisor = None
-            self._publish_event({"type": "setup_result", "success": False, "reason": "supervisor_start_failed"})
+    def _on_in(self, msg: String) -> None:
+        text = msg.data.strip().lower()
+        if not text:
             return
+        if self.node is not None:
+            self.node.get_logger().info(f"READ /gridtwin/in: {text}")
+        parts = text.split()
+        if parts[0] == "state":
+            self._publish_state()
+            return
+        if parts[0] == "move":
+            if self.node is not None:
+                self.node.get_logger().info("PROCESS handling move command.")
+            self._handle_move(parts)
+            return
+        if parts[0] == "suggest":
+            if self.node is not None:
+                self.node.get_logger().info("PROCESS handling suggest command.")
+            self._handle_suggest(parts)
+            return
+        self._publish_out(f"error unknown_command {text}")
 
-        self._publish_event({"type": "setup_result", "success": True})
-        self._publish_state()
-
-    def _on_move_request(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError:
+    def _handle_move(self, parts: list[str]) -> None:
+        # move <player|agent> <color> <id> <dir>
+        if len(parts) != 5:
+            self._publish_out("move_fail invalid_format")
             return
-        dir_str = payload.get("dir")
-        color_str = payload.get("color")
-        number = payload.get("id")
-        if dir_str is None or color_str is None or number is None:
-            return
-        direction = _direction_from_str(str(dir_str))
-        color = _blockcolor_from_str(str(color_str))
+        _, actor_str, color_str, sid, dir_str = parts
+        actor = _actor_from_str(actor_str)
+        color = _blockcolor_from_str(color_str)
+        direction = _direction_from_str(dir_str)
         try:
-            number_int = int(number)
-        except Exception:
+            number_int = int(sid)
+        except ValueError:
             number_int = None
-        if direction is None or color is None or number_int is None:
+        if actor is None or color is None or direction is None or number_int is None:
+            self._publish_out("move_fail invalid_arguments")
             return
         name = _build_instance_name(color, number_int)
         start_pos = None
@@ -209,17 +198,47 @@ class RosBridge:
                     start_pos = pos
                     break
         if start_pos is None:
+            self._publish_out(f"move_fail block_not_found {color.value} {number_int}")
             return
         block = self.game.board.get_block(start_pos)
         if block is None or block.color != color:
+            self._publish_out(f"move_fail invalid_block {color.value} {number_int}")
             return
-        ok = self.game._attempt_move(start_pos, direction, ActorType.PLAYER)
-        if ok:
-            self.publish_move(start_pos, direction, ActorType.PLAYER)
+        ok = self.game._attempt_move(start_pos, direction, actor)
+        if not ok:
+            self._publish_out(f"move_fail rejected {actor_str} {color.value} {number_int} {dir_str}")
+
+    def _handle_suggest(self, parts: list[str]) -> None:
+        # suggest <color> <id>
+        if len(parts) != 3:
+            self._publish_out("error suggest_invalid_format")
+            return
+        _, color_str, sid = parts
+        color = _blockcolor_from_str(color_str)
+        try:
+            block_id = int(sid)
+        except ValueError:
+            block_id = None
+        if color is None or block_id is None:
+            self._publish_out("error suggest_invalid_arguments")
+            return
+        if color not in {BlockColor.RED, BlockColor.GREEN}:
+            self._publish_out("error suggest_invalid_color")
+            return
+        step = self._suggest_step(color, block_id)
+        if step is None:
+            self._publish_out(f"error no_step {color.value} {block_id}")
+            return
+        x, y, direction = step
+        self._publish_out(f"step {color.value} {block_id} {_direction_label(direction)} {x} {y}")
 
     def _on_start(self, msg: String) -> None:
         # Start the game using current board/supervisor; no payload needed.
+        if self.node is not None:
+            self.node.get_logger().info("READ /gridtwin/start: start")
+            self.node.get_logger().info("PROCESS starting play mode.")
         if self.started:
+            self._publish_out("started")
             return
         if self.game.supervisor is None:
             # If supervisor not running, attempt to build and start with current board.
@@ -230,10 +249,98 @@ class RosBridge:
             except Exception as exc:
                 print(f"Failed to start supervisor from ROS start: {exc}")
                 self.game.supervisor = None
+                self._publish_out("error supervisor_start_failed")
                 return
         self.game.state = GameState.PLAYING
         self.game.start_time = time.time()
         self.started = True
+        self._publish_out("started")
+        self._publish_state()
+
+    def _suggest_step(self, color: BlockColor, block_id: int) -> Optional[tuple[int, int, Direction]]:
+        if self.game.instance_positions is None:
+            return None
+        name = _build_instance_name(color, block_id)
+        start = self.game.instance_positions.get(name)
+        if start is None:
+            return None
+        block = self.game.board.get_block(start)
+        if block is None or block.color != color:
+            return None
+        occupied = set(self.game.board.blocks.keys())
+        occupied.discard(start)
+
+        goals = list(self.game.board.goals) if self.game.board.goals else []
+        if goals:
+            target = min(goals, key=lambda g: abs(g[0] - start[0]) + abs(g[1] - start[1]))
+            path = self._bfs(start, target, occupied)
+            if len(path) >= 2:
+                direction = self._direction_between(path[0], path[1])
+                if direction is not None:
+                    return start[0], start[1], direction
+
+        for direction in (UP, DOWN, LEFT, RIGHT):
+            nxt = (start[0] + direction.dx, start[1] + direction.dy)
+            if not self.game.board.in_bounds(nxt) or nxt in self.game.board.blocks:
+                continue
+            return start[0], start[1], direction
+        return None
+
+    def _bfs(
+        self,
+        start: Position,
+        goal: Position,
+        blocked: set[Position],
+    ) -> list[Position]:
+        if start == goal:
+            return [start]
+        queue = [start]
+        parents: dict[Position, Optional[Position]] = {start: None}
+        while queue:
+            cur = queue.pop(0)
+            if cur == goal:
+                break
+            for direction in (UP, DOWN, LEFT, RIGHT):
+                nxt = (cur[0] + direction.dx, cur[1] + direction.dy)
+                if not self.game.board.in_bounds(nxt):
+                    continue
+                if nxt in blocked and nxt != goal:
+                    continue
+                if nxt in parents:
+                    continue
+                parents[nxt] = cur
+                queue.append(nxt)
+        if goal not in parents:
+            return []
+        out: list[Position] = []
+        node: Optional[Position] = goal
+        while node is not None:
+            out.append(node)
+            node = parents[node]
+        out.reverse()
+        return out
+
+    def _direction_between(self, a: Position, b: Position) -> Optional[Direction]:
+        dx = b[0] - a[0]
+        dy = b[1] - a[1]
+        if dx == 0 and dy == -1:
+            return UP
+        if dx == 0 and dy == 1:
+            return DOWN
+        if dx == -1 and dy == 0:
+            return LEFT
+        if dx == 1 and dy == 0:
+            return RIGHT
+        return None
+
+    def _publish_out(self, text: str) -> None:
+        if self.out_pub is None or String is None:
+            return
+        msg = String()
+        msg.data = text
+        self.out_pub.publish(msg)
+        if self.node is not None:
+            self.node.get_logger().info(f"WRITE /gridtwin/out: {text}")
 
     def shutdown(self) -> None:
         try:
@@ -267,6 +374,8 @@ def _actor_from_str(value: str) -> Optional[ActorType]:
     value = value.lower()
     if value == "player":
         return ActorType.PLAYER
+    if value == "agent":
+        return ActorType.AGENT
     return None
 
 
@@ -310,7 +419,8 @@ class Game:
     def __init__(self) -> None:
         pygame.init()
         self.board = Board(GRID_SIZE, GRID_SIZE)
-        self.agent = Agent()
+        self.agent = Agent(allow_green_nudge=False)
+        self.agent_auto_enabled = False
         self.state: str = GameState.SETUP
         self.clock = pygame.time.Clock()
         self.screen = pygame.display.set_mode(
@@ -333,7 +443,7 @@ class Game:
         while True:
             dt = self.clock.tick(FPS) / 1000.0
             self._handle_events()
-            if self.state == GameState.PLAYING:
+            if self.state == GameState.PLAYING and self.agent_auto_enabled:
                 self._update_agent(dt)
                 if self.board.all_red_on_goals():
                     self.state = GameState.COMPLETE
@@ -435,7 +545,15 @@ class Game:
         if moved and self.supervisor is not None:
             self.supervisor.update_position(pos, direction)
         if moved:
+            if actor == ActorType.PLAYER:
+                self.player_move_count += 1
+            elif actor == ActorType.AGENT:
+                self.agent.move_count += 1
             self._update_instance_positions(pos, direction)
+            if self.board.all_red_on_goals():
+                self.state = GameState.COMPLETE
+                if self.start_time is not None and self.completion_time is None:
+                    self.completion_time = time.time() - self.start_time
             if self.ros_bridge is not None:
                 self.ros_bridge.publish_move(pos, direction, actor)
         return moved
@@ -445,9 +563,26 @@ class Game:
         if move is None:
             return
         start, direction = move
-        moved = self._attempt_move(start, direction, ActorType.AGENT)
-        if moved:
-            self.agent.move_count += 1
+        self._attempt_move(start, direction, ActorType.AGENT)
+
+    def run_red_sequence(self, max_steps: int = 200) -> None:
+        """Run red-agent moves until blocked or goal reached."""
+        if self.state != GameState.PLAYING:
+            return
+        self.agent._cooldown = 0.0
+        for _ in range(max_steps):
+            move = self.agent._plan_move(self.board)
+            if move is None:
+                break
+            start, direction = move
+            moved = self._attempt_move(start, direction, ActorType.AGENT)
+            if not moved:
+                break
+            if self.board.all_red_on_goals():
+                self.state = GameState.COMPLETE
+                if self.start_time is not None:
+                    self.completion_time = time.time() - self.start_time
+                break
 
     def _shutdown_supervisor(self) -> None:
         if self.supervisor is not None:

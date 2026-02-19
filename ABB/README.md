@@ -1,24 +1,30 @@
-# ABB Bridge
+# ROS Topics
+- `/abb/start`
+- `/abb/in`
+- `/abb/out`
 
-ROS 2 node that forwards `abb/command` to the ABB controller over TCP and publishes execution results on `abb/result`.
+# Inputs
+- From `/abb/start`:
+  - `start`
+- From `/abb/in`:
+  - `move <x> <y> <up|down|left|right>`
+  - `XXXXX`
 
-## Topics
-- Subscribes: `abb/command` (std_msgs/String, JSON `{ "color": str, "id": int, "dir": "up|down|left|right" }`)
-- Publishes: `abb/result` (std_msgs/String, JSON `{ "ok": bool }`)
+# Outputs
+- To `/abb/out`:
+  - `ok`
+  - `fail`
 
-## TCP payload
-- Sends the raw JSON string received on `abb/command` to the ABB controller via TCP.
-- Expects a single-byte/small reply: `"1"` for success, anything else for failure.
-- Logs every send/receive.
-
-## Run
-```
-./venv/bin/python ABB/main.py
-```
-Ensure ROS 2 environment is sourced and the ABB controller socket server is reachable.
-
-## Test
-- Publish a sample ROS command to the bridge (it will format to `XXYYD` before TCP):
-  ```bash
-  ros2 topic pub /abb/command std_msgs/msg/String "{data: '{\"x\":0,\"y\":1,\"color\":\"red\",\"id\":1,\"dir\":\"right\"}'}" --once
-  ```
+# Testing
+- Run ABB bridge:
+  - `./venv/bin/python ./main.py`
+- Ask ABB bridge to connect:
+  - `ros2 topic pub /abb/start std_msgs/msg/String "{data: 'start'}" --once`
+- Send movement command:
+  - `ros2 topic pub /abb/in std_msgs/msg/String "{data: 'move 2 3 right'}" --once`
+- Send special space command:
+  - `ros2 topic pub /abb/in std_msgs/msg/String "{data: 'XXXXX'}" --once`
+- Observe result topic:
+  - `ros2 topic echo /abb/out`
+- Optional local TCP emulator for quick testing:
+  - `nc -l 8000`

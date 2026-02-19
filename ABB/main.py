@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import socket
 import sys
 import threading
@@ -14,8 +13,9 @@ from std_msgs.msg import String
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
-from Main.ros_constants import TOPIC_ABB_COMMAND, TOPIC_ABB_RESULT
-from Main import ros_constants as cfg
+
+from Orchestrator import ros_constants as cfg
+from Orchestrator.ros_constants import TOPIC_ABB_IN, TOPIC_ABB_OUT, TOPIC_ABB_START
 
 
 class AbbBridge(Node):
@@ -24,11 +24,24 @@ class AbbBridge(Node):
         self.host = cfg.ABB_HOST
         self.port = cfg.ABB_PORT
         self.timeout = cfg.ABB_TIMEOUT
+        self.test_mode = bool(cfg.ABB_TEST_MODE)
         self.sock: socket.socket | None = None
         self.lock = threading.Lock()
-        self.create_subscription(String, TOPIC_ABB_COMMAND, self._on_command, 10)
-        self.result_pub = self.create_publisher(String, TOPIC_ABB_RESULT, 10)
+
+        self.create_subscription(String, TOPIC_ABB_START, self._on_start, 10)
+        self.create_subscription(String, TOPIC_ABB_IN, self._on_in, 10)
+        self.out_pub = self.create_publisher(String, TOPIC_ABB_OUT, 10)
+        self.get_logger().info(f"ABB module started. test_mode={self.test_mode}")
+
+    def _on_start(self, _: String) -> None:
+        if self.test_mode:
+            self.get_logger().info("PROCESS test mode active, skipping TCP connect on start.")
+            return
+        self.get_logger().info("PROCESS start received, connecting TCP socket.")
         self._connect()
+        if self.sock is None:
+            self.get_logger().error("PROCESS start connect failed, publishing fail.")
+            self._publish_out("fail")
 
     def _connect(self) -> None:
         try:
@@ -41,61 +54,70 @@ class AbbBridge(Node):
             self.get_logger().error(f"Failed to connect to ABB: {exc}")
             self.sock = None
 
-    def _on_command(self, msg: String) -> None:
-        payload = msg.data.strip()
-        self.get_logger().info(f"Received abb/command: {payload}")
-        try:
-            data = json.loads(payload)
-            # Expected: {"color": str, "id": int, "dir": str}
-        except Exception as exc:
-            self.get_logger().error(f"Invalid JSON on abb/command: {exc}")
+    def _on_in(self, msg: String) -> None:
+        raw = msg.data.strip()
+        text = raw.lower()
+        self.get_logger().info(f"READ /abb/in: {raw}")
+        if self.test_mode:
+            self.get_logger().info("PROCESS test mode active, returning ABB ok immediately.")
+            self._publish_out("ok")
             return
-        tcp_string = self._format_tcp_string(data)
-        if tcp_string is None:
-            self.get_logger().error("abb/command missing x/y/dir fields")
-            self._publish_result(False)
+        if raw == "XXXXX" or text == "xxxxx":
+            self.get_logger().info("PROCESS formatting special space payload.")
+            ok = self._send_to_abb("XXXXX")
+            self._publish_out("ok" if ok else "fail")
             return
-        self.get_logger().info(f"TCP payload: {tcp_string}")
-        self._send_to_abb(tcp_string)
-
-    def _format_tcp_string(self, data: dict) -> str | None:
-        try:
-            x = int(data.get("x"))
-            y = int(data.get("y"))
-            direction = str(data.get("dir"))
-        except Exception:
-            return None
+        parts = text.split()
+        if len(parts) != 4 or parts[0] != "move":
+            self.get_logger().error("Invalid ABB input format. Expected: move <x> <y> <dir>")
+            self._publish_out("fail")
+            return
+        _, sx, sy, direction = parts
         if direction not in {"up", "down", "left", "right"}:
-            return None
-        dir_char = direction[0].upper()
-        return f"{x:02d}{y:02d}{dir_char}"
+            self.get_logger().error(f"Invalid direction: {direction}")
+            self._publish_out("fail")
+            return
+        try:
+            x = int(sx)
+            y = int(sy)
+        except ValueError:
+            self.get_logger().error("Invalid x/y in ABB input.")
+            self._publish_out("fail")
+            return
 
-    def _send_to_abb(self, text: str) -> None:
+        self.get_logger().info("PROCESS formatting move payload.")
+        tcp_payload = f"{x:02d}{y:02d}{direction[0].upper()}"
+        self.get_logger().info(f"TCP payload: {tcp_payload}")
+        ok = self._send_to_abb(tcp_payload)
+        self._publish_out("ok" if ok else "fail")
+
+    def _send_to_abb(self, payload: str) -> bool:
         if self.sock is None:
             self._connect()
         if self.sock is None:
-            self._publish_result(False)
-            return
+            return False
         try:
             with self.lock:
-                self.sock.sendall(text.encode())
-                reply = self.sock.recv(1024)
-            ok = reply.strip() == b"1"
-            self.get_logger().info(f"ABB reply: {reply!r}, ok={ok}")
-            self._publish_result(ok)
+                self.get_logger().info("PROCESS sending payload over TCP.")
+                self.sock.sendall(payload.encode())
+                reply = self.sock.recv(1024).strip()
+            self.get_logger().info(f"ABB reply: {reply!r}")
+            return reply == b"1"
         except Exception as exc:
             self.get_logger().error(f"ABB send error: {exc}")
-            self._publish_result(False)
             try:
-                self.sock.close()
+                if self.sock is not None:
+                    self.sock.close()
             except Exception:
                 pass
             self.sock = None
+            return False
 
-    def _publish_result(self, ok: bool) -> None:
+    def _publish_out(self, text: str) -> None:
         msg = String()
-        msg.data = json.dumps({"ok": bool(ok)})
-        self.result_pub.publish(msg)
+        msg.data = text
+        self.out_pub.publish(msg)
+        self.get_logger().info(f"WRITE /abb/out: {text}")
 
 
 def main() -> None:

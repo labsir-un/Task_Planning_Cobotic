@@ -1,5 +1,5 @@
-MODULE MainModule
-    CONST string ipController := "127.0.0.1"; ! TODO set real IP
+MODULE MotionPlanning
+    CONST string ipController := "192.168.125.1";
     VAR socketdev serverSocket;
     VAR socketdev clientSocket;
     VAR bool clientConnected;
@@ -8,6 +8,8 @@ MODULE MainModule
     VAR num gridX;
     VAR num gridY;
     VAR string dirChar;
+    VAR string sx;
+    VAR string sy;
 
     PROC SendReply(string msg)
         SocketSend clientSocket \str := msg;
@@ -17,8 +19,8 @@ MODULE MainModule
         IF StrLen(s) <> 5 THEN
             RETURN FALSE;
         ENDIF
-        VAR string sx := StrPart(s, 1, 2);
-        VAR string sy := StrPart(s, 3, 2);
+        sx := StrPart(s, 1, 2);
+        sy := StrPart(s, 3, 2);
         dirChar := StrPart(s, 5, 1);
         IF NOT StrToVal(sx, gridX) THEN
             RETURN FALSE;

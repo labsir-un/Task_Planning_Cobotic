@@ -1,19 +1,13 @@
 import "block.cif";
 
-red1: red(3,5);
-blue1: blue(0,8);
-blue2: blue(1,8);
-blue3: blue(1,9);
+red1: red(8,7);
 
 requirement avoidCollision:
     alg set tuple(int x,y) occupied = {
-        (red1.x, red1.y),
-        (blue1.x, blue1.y),
-        (blue2.x, blue2.y),
-        (blue3.x, blue3.y)
+        (red1.x, red1.y)
     };
 
     location:
         initial;
-        requirement invariant size(occupied) = 4;
+        requirement invariant size(occupied) = 1;
 end

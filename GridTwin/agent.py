@@ -13,6 +13,7 @@ from game_types import ActorType, BlockColor, Direction, Position, DOWN, LEFT, R
 class Agent:
     move_count: int = 0
     _cooldown: float = 0.0
+    allow_green_nudge: bool = True
 
     def next_move(self, board: Board, dt: float) -> Optional[tuple[Position, Direction]]:
         self._cooldown += dt
@@ -35,14 +36,15 @@ class Agent:
             path_clear = self._bfs_path(board, red_pos, goal, allow_pass_through=())
             if len(path_clear) >= 2:
                 return red_pos, self._direction_from_step(red_pos, path_clear[1])
-            # Try path allowing greens as stepping stones; if blocked by green, move it
-            path_with_green = self._bfs_path(board, red_pos, goal, allow_pass_through={BlockColor.GREEN})
-            if len(path_with_green) >= 2:
-                blocking_green = self._first_green_on_path(path_with_green, board)
-                if blocking_green:
-                    move = self._nudge_green(blocking_green, board, avoid_positions=set(path_with_green))
-                    if move:
-                        return move
+            # Optional helper behavior to unblock reds by nudging greens.
+            if self.allow_green_nudge:
+                path_with_green = self._bfs_path(board, red_pos, goal, allow_pass_through={BlockColor.GREEN})
+                if len(path_with_green) >= 2:
+                    blocking_green = self._first_green_on_path(path_with_green, board)
+                    if blocking_green:
+                        move = self._nudge_green(blocking_green, board, avoid_positions=set(path_with_green))
+                        if move:
+                            return move
         return None
 
     def _assign_goals(self, board: Board) -> Optional[dict[Position, Position]]:

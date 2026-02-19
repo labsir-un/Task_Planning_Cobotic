@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -11,6 +12,9 @@ try:
     import vosk  # type: ignore
 except ImportError:
     vosk = None  # typed for optional import
+else:
+    # Silence Vosk engine logs (Kaldi/Vosk INFO lines).
+    vosk.SetLogLevel(-1)
 
 # Minimal voice-to-text helper focused on yes/no or short commands.
 # Listening flow mirrors the working escuchar_comando implementation.
@@ -22,6 +26,30 @@ DEFAULT_MODEL_PATH = "/home/feli/Documents/Tesis/NLP/model/vosk-model-small-en-u
 
 _VOSK_MODEL: Optional[object] = None
 _VOSK_MODEL_PATH: Optional[str] = None
+
+
+@contextlib.contextmanager
+def _suppress_stderr_fd() -> None:
+    """
+    Suppress low-level ALSA/PortAudio stderr noise during mic operations.
+    """
+    try:
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        saved_stderr_fd = os.dup(2)
+        os.dup2(devnull_fd, 2)
+    except Exception:
+        # Fallback: continue without suppression.
+        yield
+        return
+    try:
+        yield
+    finally:
+        with contextlib.suppress(Exception):
+            os.dup2(saved_stderr_fd, 2)
+        with contextlib.suppress(Exception):
+            os.close(saved_stderr_fd)
+        with contextlib.suppress(Exception):
+            os.close(devnull_fd)
 
 
 def _load_vosk_model(path: str) -> Optional[object]:
@@ -39,12 +67,20 @@ def _load_vosk_model(path: str) -> Optional[object]:
     return _VOSK_MODEL
 
 
-def _recognize_offline(audio: sr.AudioData, model_path: str) -> tuple[str | None, str]:
+def _recognize_offline(
+    audio: sr.AudioData,
+    model_path: str,
+    allowed_words: list[str] | None = None,
+) -> tuple[str | None, str]:
     model = _load_vosk_model(model_path)
     if model is None:
         return None, "error"
     try:
-        recognizer = vosk.KaldiRecognizer(model, audio.sample_rate)
+        if allowed_words:
+            grammar_json = json.dumps(allowed_words)
+            recognizer = vosk.KaldiRecognizer(model, audio.sample_rate, grammar_json)
+        else:
+            recognizer = vosk.KaldiRecognizer(model, audio.sample_rate)
         recognizer.SetWords(True)
         if not recognizer.AcceptWaveform(audio.get_raw_data()):
             result = recognizer.FinalResult()
@@ -64,6 +100,8 @@ def _recognize_offline(audio: sr.AudioData, model_path: str) -> tuple[str | None
 def listen_and_classify(
     timeout: float = 5.0,
     device_index: int | None = None,
+    allowed_words: list[str] | None = None,
+    phrase_time_limit: float | None = 2.5,
 ) -> tuple[str | None, str]:
     """
     Capture speech and return recognized text plus a coarse label.
@@ -75,22 +113,27 @@ def listen_and_classify(
     """
     recognizer = sr.Recognizer()
     # Keep ambient noise calibration, matching escuchar_comando behavior.
-    with sr.Microphone(device_index=device_index) as source:
-        print("Listening...")
-        with contextlib.suppress(Exception):
-            recognizer.adjust_for_ambient_noise(source)
-        try:
-            audio = recognizer.listen(source, timeout=timeout)
-        except sr.WaitTimeoutError:
-            print("No audio detected.")
-            return None, "unknown"
+    with _suppress_stderr_fd():
+        with sr.Microphone(device_index=device_index) as source:
+            print("Listening...")
+            with contextlib.suppress(Exception):
+                recognizer.adjust_for_ambient_noise(source)
+            try:
+                audio = recognizer.listen(
+                    source,
+                    timeout=timeout,
+                    phrase_time_limit=phrase_time_limit,
+                )
+            except sr.WaitTimeoutError:
+                print("No audio detected.")
+                return None, "unknown"
 
     model_path = str(DEFAULT_MODEL_PATH)
     if not Path(model_path).exists():
         print(f"Vosk model not found at {model_path}. Place the model at this path.")
         return None, "error"
 
-    text, status = _recognize_offline(audio, model_path)
+    text, status = _recognize_offline(audio, model_path, allowed_words=allowed_words)
     if status == "error":
         return None, "error"
     if text is None:
