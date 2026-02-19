@@ -20,12 +20,12 @@ The project integrates:
 - `Orchestrator`: central ROS bridge coordinating all module interactions.
 
 ## Prerequisites
-- ROS2 and PlanSys2 must be installed on the machine.
-- ROS2 CLI/runtime must be available in your shell `PATH` (environment enabled globally on this machine setup).
-- CIF simulator (`cifsim`) from Eclipse ESCET must be installed on the machine.
-- In `GridTwin/supervisor.py`, `base_cmd` must point to your local `cifsim` binary path.
-- Vosk speech model for NLP must exist at:
-  - `NLP/model/vosk-model-small-en-us-0.15`
+- ROS2 and PlanSys2 installed and available in the machine environment.
+- Eclipse ESCET CIF simulator (`cifsim`) installed in the machine.
+- Audio playback dependency:
+  - `sudo apt-get install -y alsa-utils`
+- Microphone/audio dependency for `pyaudio`:
+  - `sudo apt-get install -y libportaudio2 portaudio19-dev`
 
 ## Module Setup (venv + dependencies)
 Create one `venv` inside each module folder and install dependencies:
@@ -34,6 +34,8 @@ Create one `venv` inside each module folder and install dependencies:
 - `cd Orchestrator`
 - `python3 -m venv venv`
 - `./venv/bin/pip install rclpy`
+- Configure ABB bridge constants in code:
+  - `Orchestrator/ros_constants.py` -> `ABB_HOST`, `ABB_PORT`, `ABB_TIMEOUT`, `ABB_TEST_MODE`
 
 ### ABB
 - `cd ABB`
@@ -43,10 +45,25 @@ Create one `venv` inside each module folder and install dependencies:
 ### NLP
 - `cd NLP`
 - `python3 -m venv venv`
-- `./venv/bin/pip install rclpy speechrecognition pyaudio pyttsx3 vosk`
-- System dependency for `pyaudio`: `sudo apt-get install -y libportaudio2 portaudio19-dev`
-- Download/extract Vosk model from `https://alphacephei.com/vosk/models` and place it at:
-  - `NLP/model/vosk-model-small-en-us-0.15`
+- `./venv/bin/pip install rclpy speechrecognition pyaudio vosk piper-tts pathvalidate`
+- Download/extract a Vosk model from:
+  - `https://alphacephei.com/vosk/models`
+- Set the selected Vosk model path in code:
+  - `NLP/voice_to_text.py` -> `DEFAULT_MODEL_PATH`
+- Download a Piper voice model from:
+  - `https://github.com/rhasspy/piper/blob/master/VOICES.md`
+- Download both files for the same selected voice and place them in `NLP/model`:
+  - `<voice>.onnx`
+  - `<voice>.onnx.json`
+- Set the selected Piper model path in code:
+  - `NLP/text_to_speech.py` -> `DEFAULT_PIPER_MODEL_PATH`
+- Recommended Vosk models:
+  - `vosk-model-small-en-us-0.15` (faster)
+  - `vosk-model-en-us-0.22` (better accuracy)
+- Recommended Piper voices:
+  - `en_US-lessac-medium`
+  - `en_US-amy-medium`
+  - `en_GB-alan-medium`
 
 ### Planner
 - `cd Planner`
@@ -57,6 +74,8 @@ Create one `venv` inside each module folder and install dependencies:
 - `cd GridTwin`
 - `python3 -m venv venv`
 - `./venv/bin/pip install rclpy pygame`
+- Set local CIF simulator command path in code:
+  - `GridTwin/supervisor.py` -> `base_cmd`
 
 ## Run
 1. Open a terminal at repo root.
@@ -109,7 +128,7 @@ The ABB module (`ABB/main.py`) bridges ROS messages to TCP commands for the robo
 
 - Real robot mode:
   - Set `ABB_TEST_MODE = False`.
-  - Configure `ABB_HOST`/`ABB_PORT` to the real controller endpoint.
+  - Configure `ABB_HOST`/`ABB_PORT` in `Orchestrator/ros_constants.py` to the real controller endpoint.
   - Ensure network reachability between this PC and the ABB controller.
 
 - RAPID code:

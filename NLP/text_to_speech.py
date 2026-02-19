@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import contextlib
 import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
 
-import pyttsx3
+DEFAULT_PIPER_MODEL_PATH = "/home/feli/Documents/Tesis/NLP/model/en_US-amy-medium.onnx"
 
 
 @contextlib.contextmanager
 def _suppress_stderr_fd() -> None:
-    """
-    Suppress low-level ALSA stderr noise during TTS engine calls.
-    """
     try:
         devnull_fd = os.open(os.devnull, os.O_WRONLY)
         saved_stderr_fd = os.dup(2)
@@ -29,40 +31,85 @@ def _suppress_stderr_fd() -> None:
             os.close(devnull_fd)
 
 
-def init_engine(rate: int | None = 170, volume: float | None = 0.9, voice: str | None = None) -> pyttsx3.Engine:
-    """
-    Initialize a TTS engine.
+def init_engine(rate: int | None = 170, volume: float | None = 0.9, voice: str | None = None) -> dict[str, Any]:
+    # kept for API compatibility
+    del rate, volume, voice
+    venv_piper = Path(sys.executable).parent / "piper"
+    piper_bin = str(venv_piper) if venv_piper.exists() else None
+    aplay_bin = "aplay"
+    model_path = Path(DEFAULT_PIPER_MODEL_PATH)
+    if piper_bin is None:
+        raise RuntimeError("Piper binary not found at NLP venv path: ./venv/bin/piper")
+    if not model_path.exists():
+        raise RuntimeError(f"Piper model not found at {model_path}.")
+    config_path = Path(f"{model_path}.json")
+    if not config_path.exists():
+        raise RuntimeError(
+            "Piper model config missing. Expected file: "
+            f"{config_path}. Download both files for the same voice: .onnx and .onnx.json"
+        )
+    probe = subprocess.run(
+        [piper_bin, "--help"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        check=False,
+        text=True,
+    )
+    if probe.returncode != 0:
+        err = (probe.stderr or "").strip()
+        if "No module named 'pathvalidate'" in err:
+            raise RuntimeError(
+                "Piper installation is incomplete. Install missing dependency in NLP venv: "
+                "./venv/bin/pip install pathvalidate"
+            )
+        raise RuntimeError(f"Piper binary failed to start: {err}")
+    return {
+        "backend": "piper",
+        "piper_bin": piper_bin,
+        "aplay_bin": aplay_bin,
+        "model_path": str(model_path),
+    }
 
-    rate: words per minute (approx). None to keep default.
-    volume: 0.0-1.0. None to keep default.
-    voice: optional voice id; leave None to use system default.
-    """
-    with _suppress_stderr_fd():
-        engine = pyttsx3.init()
-    if rate is not None:
-        engine.setProperty("rate", rate)
-    if volume is not None:
-        engine.setProperty("volume", volume)
-    if voice is not None:
-        engine.setProperty("voice", voice)
-    return engine
 
-
-def say(text: str, engine: pyttsx3.Engine | None = None, wait: bool = True) -> pyttsx3.Engine:
-    """
-    Speak text using pyttsx3.
-
-    If no engine is provided, a new one is created (and returned).
-    Set wait=False to enqueue speech without blocking.
-    """
+def say(text: str, engine: dict[str, Any] | None = None, wait: bool = True) -> dict[str, Any]:
     local_engine = engine or init_engine()
-    with _suppress_stderr_fd():
-        local_engine.say(text)
-        if wait:
-            local_engine.runAndWait()
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        wav_path = tmp.name
+    try:
+        synth = subprocess.run(
+            [
+                local_engine["piper_bin"],
+                "--model",
+                local_engine["model_path"],
+                "--output_file",
+                wav_path,
+            ],
+            input=text.encode("utf-8"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if synth.returncode != 0:
+            err = (synth.stderr or b"").decode(errors="ignore").strip()
+            raise RuntimeError(f"Piper synthesis failed: {err}")
+
+        play_cmd = [local_engine["aplay_bin"], wav_path]
+        with _suppress_stderr_fd():
+            if wait:
+                subprocess.run(play_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            else:
+                subprocess.Popen(
+                    play_cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+    finally:
+        with contextlib.suppress(Exception):
+            os.unlink(wav_path)
     return local_engine
 
 
 if __name__ == "__main__":
     eng = init_engine()
-    say("Hola, estoy listo para colaborar contigo.", eng)
+    say("Voice preview from NLP text to speech.", eng)

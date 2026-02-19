@@ -1,6 +1,6 @@
 import "block.cif";
 
-red1: red(8,7);
+red1: red(2,6);
 
 requirement avoidCollision:
     alg set tuple(int x,y) occupied = {
