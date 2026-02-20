@@ -1,4 +1,5 @@
 const set tuple(int x,y) goals = {
+    (5,8)
 };
 
 func bool inGoal(int x,y):

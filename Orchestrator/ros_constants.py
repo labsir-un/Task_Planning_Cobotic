@@ -21,7 +21,7 @@ TOPIC_ABB_OUT = "/abb/out"
 ABB_HOST = "192.168.125.1"
 ABB_PORT = 8000
 ABB_TIMEOUT = 60.0
-ABB_TEST_MODE = True
+ABB_TEST_MODE = False
 
 # Allowed payload values
 DIRECTIONS = ("up", "down", "left", "right")

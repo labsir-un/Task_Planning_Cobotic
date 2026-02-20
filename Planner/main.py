@@ -22,6 +22,7 @@ from Orchestrator.ros_constants import TOPIC_PLANNER_IN, TOPIC_PLANNER_OUT, TOPI
 PLAN_SERVICE = "/planner/get_plan"
 GRID_W = 10
 GRID_H = 10
+SEARCH_MARGIN = 1
 
 
 class PlannerNode(Node):
@@ -201,6 +202,45 @@ class PlannerNode(Node):
     def _all_cells(self) -> list[tuple[int, int]]:
         return [(x, y) for x in range(GRID_W) for y in range(GRID_H)]
 
+    def _expand_with_margin(self, seeds: set[tuple[int, int]], margin: int) -> set[tuple[int, int]]:
+        cells: set[tuple[int, int]] = set()
+        for sx, sy in seeds:
+            for dx in range(-margin, margin + 1):
+                for dy in range(-margin, margin + 1):
+                    x = sx + dx
+                    y = sy + dy
+                    if 0 <= x < GRID_W and 0 <= y < GRID_H:
+                        cells.add((x, y))
+        return cells
+
+    def _build_relevant_cells(self, goal_map: dict[str, tuple[int, int]]) -> set[tuple[int, int]]:
+        seeds: set[tuple[int, int]] = set()
+        for color, _, x, y in self.blocks:
+            if color != "black":
+                seeds.add((x, y))
+        for gx, gy in goal_map.values():
+            seeds.add((gx, gy))
+        if not seeds:
+            return set(self._all_cells())
+        cells = self._expand_with_margin(seeds, SEARCH_MARGIN)
+        # Always include direct Manhattan corridors from each red to its assigned goal.
+        red_positions = {f"red{bid}": (x, y) for color, bid, x, y in self.blocks if color == "red"}
+        for red_symbol, (gx, gy) in goal_map.items():
+            if red_symbol not in red_positions:
+                continue
+            x, y = red_positions[red_symbol]
+            step_x = 1 if gx >= x else -1
+            while x != gx:
+                cells.add((x, y))
+                x += step_x
+                cells.add((x, y))
+            step_y = 1 if gy >= y else -1
+            while y != gy:
+                cells.add((x, y))
+                y += step_y
+                cells.add((x, y))
+        return cells
+
     def _adjacent_facts(self) -> list[str]:
         facts: list[str] = []
         for x, y in self._all_cells():
@@ -230,7 +270,8 @@ class PlannerNode(Node):
         return facts
 
     def _build_problem_text(self, goal_map: dict[str, tuple[int, int]]) -> str:
-        occupied = {(x, y) for _, _, x, y in self.blocks}
+        relevant_cells = self._build_relevant_cells(goal_map)
+        occupied = {(x, y) for _, _, x, y in self.blocks if (x, y) in relevant_cells}
         red_objs: list[str] = []
         blue_objs: list[str] = []
         green_objs: list[str] = []
@@ -238,6 +279,8 @@ class PlannerNode(Node):
 
         for color, sid, x, y in self.blocks:
             if color == "black":
+                continue
+            if (x, y) not in relevant_cells:
                 continue
             symbol = f"{color}{sid}"
             if color == "red":
@@ -250,19 +293,22 @@ class PlannerNode(Node):
                 continue
             init_facts.append(f"(at {symbol} {self._cell(x, y)})")
 
-        for x, y in self._all_cells():
+        for x, y in sorted(relevant_cells):
             if (x, y) not in occupied:
                 init_facts.append(f"(free {self._cell(x, y)})")
 
-        init_facts.extend(self._adjacent_facts())
+        init_facts.extend(self._adjacent_facts_for(relevant_cells))
         for red_symbol, (gx, gy) in goal_map.items():
             init_facts.append(f"(goal {red_symbol} {self._cell(gx, gy)})")
 
-        all_cells = " ".join(self._cell(x, y) for x, y in self._all_cells())
+        all_cells = " ".join(self._cell(x, y) for x, y in sorted(relevant_cells))
         dirs = "up down left right"
         goal_expr = " ".join(
             f"(at {red_symbol} {self._cell(gx, gy)})"
             for red_symbol, (gx, gy) in goal_map.items()
+        )
+        self.get_logger().info(
+            f"PROCESS reduced planning cells: {len(relevant_cells)}/{GRID_W * GRID_H}"
         )
 
         lines = [

@@ -15,7 +15,14 @@ LAUNCH_ORDER = [
 
 def _open_module_terminal(repo_root: Path, module: str) -> None:
     module_dir = repo_root / module
-    cmd = "cd '{}' && ./venv/bin/python ./main.py; exec bash".format(module_dir)
+    logs_dir = repo_root / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_file = logs_dir / f"{module.lower()}.log"
+    cmd = (
+        "cd '{}' && ./venv/bin/python ./main.py 2>&1 | tee -a '{}'; exec bash".format(
+            module_dir, log_file
+        )
+    )
     subprocess.Popen(
         ["gnome-terminal", "--", "bash", "-lc", cmd],
         stdout=subprocess.DEVNULL,

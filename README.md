@@ -83,6 +83,12 @@ Create one `venv` inside each module folder and install dependencies:
 3. This opens independent terminals in this order:
    `Orchestrator`, `ABB`, `NLP`, `Planner`, `GridTwin`.
 4. `GridTwin` also opens a Python `pygame` game window.
+5. Module logs are stored at:
+   - `logs/orchestrator.log`
+   - `logs/abb.log`
+   - `logs/nlp.log`
+   - `logs/planner.log`
+   - `logs/gridtwin.log`
 
 ## User Manual (Flow to Play)
 1. Launch the system with `python3 Main.py`.

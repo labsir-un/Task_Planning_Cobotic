@@ -214,7 +214,8 @@ class Orchestrator(Node):
             return
 
         if parts[0] == "move_ok" and len(parts) == 7:
-            _, actor, color, sid, direction, _, _ = parts
+            _, actor, color, sid, direction, sx, sy = parts
+            self._update_position_cache_on_move_ok(color, sid, sx, sy)
             if self.mode == "waiting_user_move_result":
                 if not self._pending_matches("user", color, sid):
                     self._fail("User move ack mismatch from GridTwin.")
@@ -240,6 +241,15 @@ class Orchestrator(Node):
                 self._clear_pending()
                 self._publish(self.planner_in_pub, "done", "/planner/in")
                 return
+
+    def _update_position_cache_on_move_ok(self, color: str, sid: str, sx: str, sy: str) -> None:
+        try:
+            block_id = int(sid)
+            x = int(sx)
+            y = int(sy)
+        except ValueError:
+            return
+        self.last_positions[(color, block_id)] = (x, y)
 
     def _on_abb_out(self, msg: String) -> None:
         text = msg.data.strip().lower()
