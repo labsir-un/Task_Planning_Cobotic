@@ -14,11 +14,11 @@ MODULE MotionPlanning
     ! Calibration points on the real grid:
     ! (2,0), (7,0), (5,5)
     CONST robtarget pCal20 :=
-        [[430, -150, 400], [1, 0, 0, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
+        [[430, -150, 489], [1, 0, 0, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
     CONST robtarget pCal70 :=
-        [[430, 150, 400], [1, 0, 0, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
-    CONST robtarget pCal56 :=
-        [[730, 30, 400], [1, 0, 0, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
+        [[430, 162, 500], [1, 0, 0, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
+    CONST robtarget pCal55 :=
+        [[740, 37, 500], [1, 0, 0, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
 
     ! Waiting position in joint space (axis values). Calibrate for your real cell.
     CONST jointtarget jWaitPos :=
@@ -72,9 +72,9 @@ MODULE MotionPlanning
         stepXz := (pCal70.trans.z - pCal20.trans.z) / 5;
 
         ! Y axis per-cell step from (2,0) -> (5,5): remove X contribution (3 cells) and divide by 5.
-        stepYx := (pCal56.trans.x - pCal20.trans.x - 3 * stepXx) / 5;
-        stepYy := (pCal56.trans.y - pCal20.trans.y - 3 * stepXy) / 5;
-        stepYz := (pCal56.trans.z - pCal20.trans.z - 3 * stepXz) / 5;
+        stepYx := (pCal55.trans.x - pCal20.trans.x - 3 * stepXx) / 5;
+        stepYy := (pCal55.trans.y - pCal20.trans.y - 3 * stepXy) / 5;
+        stepYz := (pCal55.trans.z - pCal20.trans.z - 3 * stepXz) / 5;
 
         t.trans.x := pCal20.trans.x + (x - 2) * stepXx + y * stepYx;
         t.trans.y := pCal20.trans.y + (x - 2) * stepXy + y * stepYy;
@@ -257,18 +257,18 @@ MODULE MotionPlanning
     PROC CalibrateGrid()
         VAR robtarget p20;
         VAR robtarget p70;
-        VAR robtarget p56;
+        VAR robtarget p55;
 
         CellCenterTarget 2, 0, 0, p20;
         CellCenterTarget 7, 0, 0, p70;
-        CellCenterTarget 5, 5, 0, p56;
+        CellCenterTarget 5, 5, 0, p55;
 
         WHILE TRUE DO
             MoveJ p20, vSafeWork, fine, tool0\WObj:=wobj0;
             WaitTime 3;
             MoveJ p70, vSafeWork, fine, tool0\WObj:=wobj0;
             WaitTime 3;
-            MoveJ p56, vSafeWork, fine, tool0\WObj:=wobj0;
+            MoveJ p55, vSafeWork, fine, tool0\WObj:=wobj0;
             WaitTime 3;
         ENDWHILE
     ERROR
@@ -290,7 +290,6 @@ MODULE MotionPlanning
         SocketListen serverSocket;
         SocketAccept serverSocket, clientSocket;
         clientConnected := TRUE;
-        SocketSend clientSocket \str := "Success";
     ENDPROC
 
     PROC main()
@@ -306,3 +305,4 @@ MODULE MotionPlanning
         ENDWHILE
     ENDPROC
 ENDMODULE
+

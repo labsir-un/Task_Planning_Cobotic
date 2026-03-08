@@ -19,7 +19,7 @@ Current calibration points in code:
 
 - `pCal20` -> grid `(2,0)`
 - `pCal70` -> grid `(7,0)`
-- `pCal56` -> grid `(5,5)`
+- `pCal55` -> grid `(5,5)`
 
 Current init/wait joint position:
 
@@ -92,9 +92,9 @@ To run on real ABB controller:
 4. Calibrate and update these constants (see calibration section below):
 - `pCal20` (real position of grid cell `(2,0)`)
 - `pCal70` (real position of grid cell `(7,0)`)
-- `pCal56` (real position of grid cell `(5,5)`)
+- `pCal55` (real position of grid cell `(5,5)`)
 - `jWaitPos` (desired init/wait joint target)
-- Optional: `approachHeightMm`
+- `approachHeightMm` (desired safety approach height)
 
 5. Review speed constants as needed:
 - `vSafeJoint`

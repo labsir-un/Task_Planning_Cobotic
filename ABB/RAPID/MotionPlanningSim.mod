@@ -12,7 +12,7 @@ MODULE MotionPlanningSim
         [[430, -150, 400], [1, 0, 0, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
     CONST robtarget pCal70 :=
         [[430, 150, 400], [1, 0, 0, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
-    CONST robtarget pCal56 :=
+    CONST robtarget pCal55 :=
         [[730, 30, 400], [1, 0, 0, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
 
     ! Waiting position in joint space (axis values).
@@ -63,9 +63,9 @@ MODULE MotionPlanningSim
         stepXz := (pCal70.trans.z - pCal20.trans.z) / 5;
 
         ! Y axis per-cell step from (2,0) -> (5,5): remove X contribution (3 cells) and divide by 5.
-        stepYx := (pCal56.trans.x - pCal20.trans.x - 3 * stepXx) / 5;
-        stepYy := (pCal56.trans.y - pCal20.trans.y - 3 * stepXy) / 5;
-        stepYz := (pCal56.trans.z - pCal20.trans.z - 3 * stepXz) / 5;
+        stepYx := (pCal55.trans.x - pCal20.trans.x - 3 * stepXx) / 5;
+        stepYy := (pCal55.trans.y - pCal20.trans.y - 3 * stepXy) / 5;
+        stepYz := (pCal55.trans.z - pCal20.trans.z - 3 * stepXz) / 5;
 
         t.trans.x := pCal20.trans.x + (x - 2) * stepXx + y * stepYx;
         t.trans.y := pCal20.trans.y + (x - 2) * stepXy + y * stepYy;
@@ -244,18 +244,18 @@ MODULE MotionPlanningSim
     PROC CalibrateGrid()
         VAR robtarget p20;
         VAR robtarget p70;
-        VAR robtarget p56;
+        VAR robtarget p55;
 
         CellCenterTarget 2, 0, 0, p20;
         CellCenterTarget 7, 0, 0, p70;
-        CellCenterTarget 5, 5, 0, p56;
+        CellCenterTarget 5, 5, 0, p55;
 
         WHILE TRUE DO
             MoveJ p20, vSafeWork, fine, tool0\WObj:=wobj0;
             WaitTime 3;
             MoveJ p70, vSafeWork, fine, tool0\WObj:=wobj0;
             WaitTime 3;
-            MoveJ p56, vSafeWork, fine, tool0\WObj:=wobj0;
+            MoveJ p55, vSafeWork, fine, tool0\WObj:=wobj0;
             WaitTime 3;
         ENDWHILE
     ERROR
@@ -270,19 +270,19 @@ MODULE MotionPlanningSim
 
         TPWrite "TEST 1: 0203D";
         ExecuteCommand "0203D";
-        WaitTime 0.3;
+        WaitTime 5;
 
         TPWrite "TEST 2: 0504U";
         ExecuteCommand "0504U";
-        WaitTime 0.3;
+        WaitTime 5;
 
         TPWrite "TEST 3: 0903L";
         ExecuteCommand "0903L";
-        WaitTime 0.3;
+        WaitTime 5;
 
         TPWrite "TEST 4: 0005R";
         ExecuteCommand "0005R";
-        WaitTime 0.3;
+        WaitTime 5;
 
         TPWrite "TESTS DONE";
         MoveInitPosition;
@@ -291,3 +291,4 @@ MODULE MotionPlanningSim
         ENDWHILE
     ENDPROC
 ENDMODULE
+
