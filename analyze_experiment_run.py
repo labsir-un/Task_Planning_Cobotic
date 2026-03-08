@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Analyze one experiment run folder (e.g., LogsExp/logs2) using the user's timing definitions.
+Analyze one experiment run folder using the user's timing definitions.
 
 Human time (from nlp.log):
   - setup time:        NLP module start -> "start" command
@@ -19,6 +19,14 @@ Outputs:
   - total robot time
   - fan-out proxies (with and without setup time)
   - timeline graph (who is acting vs time)
+
+How to run:
+  1) From this directory:
+     python3 analyze_experiment_run.py /Users/feli/Downloads/logs
+  2) With custom output plot path:
+     python3 analyze_experiment_run.py /Users/feli/Downloads/logs --plot /Users/feli/Downloads/logs/my_timeline.png
+  3) Dependency for graph generation:
+     pip install matplotlib
 """
 
 from __future__ import annotations
@@ -424,7 +432,7 @@ def build_timeline_plot(intervals: List[Interval], t0: float, t1: float, out_pat
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Analyze one experiment log folder.")
-    ap.add_argument("run_folder", type=Path, help="Path to one run folder (e.g., LogsExp/logs2)")
+    ap.add_argument("run_folder", type=Path, help="Path to one run folder (e.g., /Users/feli/Downloads/logs)")
     ap.add_argument("--plot", type=Path, default=None, help="Output PNG path for the timeline graph")
     args = ap.parse_args()
 
@@ -584,4 +592,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
