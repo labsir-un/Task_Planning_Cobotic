@@ -145,3 +145,4 @@ The ABB module (`ABB/main.py`) bridges ROS messages to TCP commands for the robo
 ## Notes
 - `Planner/main.py` launches PlanSys2 in a separate terminal automatically.
 - `GridTwin` launches an additional separate terminal for the CIF supervisor process (`cifsim`) so you can monitor supervisory output.
+- `analyze_experiment_run.py` processes a logs folder (automatically generated during an experiment run) to compute the experiment metrics.
