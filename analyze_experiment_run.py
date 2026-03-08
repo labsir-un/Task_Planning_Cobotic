@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Analyze one experiment run folder using the user's timing definitions.
+Analyze one experiment run logs folder using the defined metrics.
 
 Human time (from nlp.log):
   - setup time:        NLP module start -> "start" command
