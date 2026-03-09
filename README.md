@@ -1,6 +1,8 @@
-# Cobot Final Experiment Project
+# Task Planning Implementation in Cobotic Workspaces
 
-This repository contains the final integration experiment project for the graduation of **Felipe Cruz Vasquez** from the **Universidad Nacional de Colombia**, in the **Master's degree in Automatización Industrial - Profundización**.
+To see final experiment results, watch the video: https://youtu.be/fhsgndoK6WI
+
+This repository contains the final integration software project for the graduation of **Felipe Cruz Vasquez** from the **Universidad Nacional de Colombia**, in the **Master's degree in Automatización Industrial - Profundización**.
 
 ## Table of Contents
 - [System Overview](#system-overview)
