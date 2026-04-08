@@ -1,6 +1,6 @@
 # Task Planning Implementation in Cobotic Workspaces
 
-To see final experiment results, watch the video: https://youtu.be/fhsgndoK6WI
+To see final experiment results, watch the video: https://youtu.be/6pymrIKnBQI
 
 This repository contains the final integration software project for the graduation of **Felipe Cruz Vasquez** from the **Universidad Nacional de Colombia**, in the **Master's degree in Automatización Industrial - Profundización**.
 
