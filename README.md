@@ -5,13 +5,20 @@ To see final experiment results, watch the video: https://youtu.be/6pymrIKnBQI
 This repository contains the final integration software project for the graduation of **Felipe Cruz Vasquez** from the **Universidad Nacional de Colombia**, in the **Master's degree in Automatización Industrial - Profundización**.
 
 ## Table of Contents
-- [System Overview](#system-overview)
-- [Prerequisites](#prerequisites)
-- [Module Setup (venv + dependencies)](#module-setup-venv--dependencies)
-- [Run](#run)
-- [User Manual (Flow to Play)](#user-manual-flow-to-play)
-- [ABB Robot](#abb-robot)
-- [Notes](#notes)
+- [Task Planning Implementation in Cobotic Workspaces](#task-planning-implementation-in-cobotic-workspaces)
+  - [Table of Contents](#table-of-contents)
+  - [System Overview](#system-overview)
+  - [Prerequisites](#prerequisites)
+  - [Module Setup (venv + dependencies)](#module-setup-venv--dependencies)
+    - [Orchestrator](#orchestrator)
+    - [ABB](#abb)
+    - [NLP](#nlp)
+    - [Planner](#planner)
+    - [GridTwin](#gridtwin)
+  - [Run](#run)
+  - [User Manual (Flow to Play)](#user-manual-flow-to-play)
+  - [ABB Robot](#abb-robot)
+  - [Notes](#notes)
 
 ## System Overview
 The project integrates:
@@ -140,11 +147,11 @@ The ABB module (`ABB/main.py`) bridges ROS messages to TCP commands for the robo
   - Ensure network reachability between this PC and the ABB controller.
 
 - RAPID code:
-  - Current RAPID files are in `ABB/RAPID/`.
-  - `ABB/RAPID/MainModule.mod` is currently a partial/base implementation.
-  - Final RAPID motion logic and full controller-side behavior are pending and can be completed later.
+  - The physical-validation controller is `ABB/RAPID/MotionPlanning.mod`; it implements TCP command reception, three-point grid calibration, one-cell motion primitives, and error fallback to a wait position.
+  - `ABB/RAPID/MotionPlanningSim.mod` contains the corresponding no-socket RobotStudio test mode.
+  - See `ABB/RAPID/README.md` for calibration and deployment instructions.
 
 ## Notes
 - `Planner/main.py` launches PlanSys2 in a separate terminal automatically.
 - `GridTwin` launches an additional separate terminal for the CIF supervisor process (`cifsim`) so you can monitor supervisory output.
-- `analyze_experiment_run.py` processes a logs folder (automatically generated during an experiment run) to compute the experiment metrics.
+- `analyze_experiment_run.py` processes a logs folder generated during an experiment run to compute the experiment metrics.
